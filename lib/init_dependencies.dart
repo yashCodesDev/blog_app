@@ -1,26 +1,26 @@
-import 'package:blog_app/core/common/cubits/app_user/app_user_cubit.dart';
-import 'package:blog_app/core/secrets/app_secrets.dart';
-import 'package:blog_app/features/auth/data/datasources/auth_remote_data_source.dart';
-import 'package:blog_app/features/auth/data/repositories/auth_repository_impl.dart';
-import 'package:blog_app/features/auth/domain/repository/auth_repository.dart';
-import 'package:blog_app/features/auth/domain/usecases/current_user.dart';
-import 'package:blog_app/features/auth/domain/usecases/user_sign_in.dart';
-import 'package:blog_app/features/auth/domain/usecases/user_sign_up.dart';
-import 'package:blog_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:get_it/get_it.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+part of 'init_dependencies.main.dart';
 
 final serviceLocator = GetIt.instance;
 Future<void> initDependencies() async {
   _initAuth();
+  _initBlog();
   final supabase = await Supabase.initialize(
     url: AppSecrets.supabaseUrl,
     anonKey: AppSecrets.supabaseKey,
   );
+  //Hive
+  Hive.defaultDirectory = (await getApplicationDocumentsDirectory()).path;
 
   serviceLocator.registerLazySingleton(() => supabase.client);
   //core
   serviceLocator.registerLazySingleton(() => AppUserCubit());
+
+  serviceLocator.registerFactory(() => Hive.box(name: 'blogs'));
+
+  serviceLocator.registerFactory(() => InternetConnection());
+
+  serviceLocator.registerFactory<ConnectionChecker>(
+      () => ConnectionCheckerImpl(serviceLocator()));
 }
 
 void _initAuth() {
@@ -30,7 +30,7 @@ void _initAuth() {
           ));
 
   serviceLocator.registerFactory<AuthRepository>(
-      () => AuthRepositoryImpl(serviceLocator()));
+      () => AuthRepositoryImpl(serviceLocator(), serviceLocator()));
 
   serviceLocator
       .registerFactory<UserSignUp>(() => UserSignUp(serviceLocator()));
@@ -44,4 +44,36 @@ void _initAuth() {
       userSignIn: serviceLocator(),
       currentUser: serviceLocator(),
       appUserCubit: serviceLocator()));
+}
+
+void _initBlog() {
+  //DataSource
+  serviceLocator.registerFactory<BlogRemoteDataSource>(
+      () => BlogRemoteDataSourceImpl(serviceLocator()));
+  serviceLocator.registerFactory<BlogLocalDataSource>(
+      () => BlogLocalDataSourceImpl(serviceLocator()));
+  // Repository
+  serviceLocator.registerFactory<BlogRepository>(
+    () => BlogRepositoryImpl(
+        serviceLocator(), serviceLocator(), serviceLocator()),
+  );
+  //Usecase
+  serviceLocator.registerFactory(
+    () => UploadBlog(
+      serviceLocator(),
+    ),
+  );
+  serviceLocator.registerFactory(
+    () => GetAllBlogs(
+      serviceLocator(),
+    ),
+  );
+
+  //Bloc
+  serviceLocator.registerLazySingleton(
+    () => BlogBloc(
+      uploadBlog: serviceLocator(),
+      getAllBlogs: serviceLocator(),
+    ),
+  );
 }
